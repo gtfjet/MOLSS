@@ -8,9 +8,10 @@
 #define DIMX 460
 #define DIMY 540
 #define DIMZ 4
+#define NHOLES 10000
 
 HDC DC;
-int x, y, z, count=4, M[DIMX][DIMY][DIMZ] = {0};      
+int x, y, z, M[DIMX][DIMY][DIMZ] = {0};      
 unsigned char R[DIMX][DIMY][DIMZ], G[DIMX][DIMY][DIMZ], B[DIMX][DIMY][DIMZ];
 
 int mod(int a, int b) {
@@ -84,7 +85,11 @@ void movein(int h) {
 }
 
 void walk() {
-	int i, j, n, h, b[8], p[]={0,1,2,3,-1,-2,-3}, q[]={7,6,5,0,8,4,1,2,3};
+	int i, j, n, h, b[8];
+	int	p[]={0,1,2,3,-1,-2,-3}, q[]={7,6,5,0,8,4,1,2,3};
+	int x0[NHOLES]={0}, y0[NHOLES]={0}, count[NHOLES]={0};
+	int index = 0;
+	count[index]=8;	
 	
 	/* Initial heading and position */
 	h = 0;	x = 289;  y = 214;	z = 0;
@@ -94,82 +99,97 @@ void walk() {
 		movein(h);
 		
 		/* Look for a hole */
-		if(count>6) {
-			for(i=-3; i<=3; i+=3) {
-				for(j=-3; j<=3; j+=3) {
-					if(M[x+i][y+j][z] == 2) {
-						h = q[n];
+		for(i=-3; i<=3; i+=3) {
+			for(j=-3; j<=3; j+=3) {
+				if(M[x+i][y+j][z] >= 2) {    //found a hole!
+					if((x+i)==x0[index] && (y+j)==y0[index]) {   //same as last hole?
+						count[index]++;
+					}
+					if((((x+i)!=x0[index] && (y+j)!=y0[index]) || count[index]>7) && ((x+i)!=x0[index+1] && (y+j)!=y0[index+1])) {  //new hole or old counted hole and not the hole we just came up/down
+						if((x+i)!=x0[index] && (y+j)!=y0[index]) { //new hole
+							index++;
+							count[index] = 0;
+							x0[index] = x+i; y0[index] = y+j;  //save position of hole
+						} else { //old counted hole
+							index--;
+						}
+						
+						/* Go up or down? */
 						if(z==0) {
 							z++;
+							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}
 						} else if(z==DIMZ) {
 							z--;
 						} else if(M[x+i][y+j][z-1] == 2) {
 							z--;
 						} else {
 							z++;
+							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}
 						}
-						count = 0;
-						printf("%i\n",z);
+	
+						h = q[n];
+						movein(h);
+						//h = 4;
 						break;
-					} 
-					n++;
+					}
+					//printf("%i,%i\n",index,count[index]);
 				}
+				n++;
 			}
 		}
+		
 		
 		/* Wall following */
-		if(count>0) {	
-			for(i=0; i<8; i++) {b[i] = 0;}	
-			
-			if(h!=4 && M[x][y-3][z]==1 && M[x+3][y-3][z]==0) {	//head N
-				b[0] = 1;
-			}
-			if(h!=5 && M[x+3][y-3][z]==1 && M[x+3][y][z]==0) {	//head NE
-				b[1] = 1;
-			}
-			if(h!=6 && M[x+3][y][z]==1 && M[x+3][y+3][z]==0) {	//head E
-				b[2] = 1;
-			}
-			if(h!=7 && M[x+3][y+3][z]==1 && M[x][y+3][z]==0) {	//head SE	
-				b[3] = 1;
-			}
-			if(h!=0 && M[x][y+3][z]==1 && M[x-3][y+3][z]==0) {	//head S
-				b[4] = 1;
-			}
-			if(h!=1 && M[x-3][y+3][z]==1 && M[x-3][y][z]==0) {	//head SW
-				b[5] = 1;
-			}
-			if(h!=2 && M[x-3][y][z]==1 && M[x-3][y-3][z]==0) {  //head W
-				b[6] = 1;
-			}
-			if(h!=3 && M[x-3][y-3][z]==1 && M[x][y-3][z]==0) {	//head NW
-				b[7] = 1;
-			}
-			
-			for(i=0; i<8; i++) {n += b[i];}
-			
-			if(n == 0) {
-				h = mod(h+4,8);
-			} else if(n == 1) {
-				for(i=0; i<8; i++) {
-					if(b[i] == 1) {
-						h = i;
-						break;
-					}
+		for(i=0; i<8; i++) {b[i] = 0;}	
+		
+		if(h!=4 && (M[x][y-3][z]==1 || M[x][y-3][z]==3) && M[x+3][y-3][z]==0) {	//head N
+			b[0] = 1;
+		}
+		if(h!=5 && (M[x+3][y-3][z]==1 || M[x+3][y-3][z]==3) && M[x+3][y][z]==0) {	//head NE
+			b[1] = 1;
+		}
+		if(h!=6 && (M[x+3][y][z]==1 || M[x+3][y][z]==3) && M[x+3][y+3][z]==0) {	//head E
+			b[2] = 1;
+		}
+		if(h!=7 && (M[x+3][y+3][z]==1 || M[x+3][y+3][z]==3) && M[x][y+3][z]==0) {	//head SE	
+			b[3] = 1;
+		}
+		if(h!=0 && (M[x][y+3][z]==1 || M[x][y+3][z]==3) && M[x-3][y+3][z]==0) {	//head S
+			b[4] = 1;
+		}
+		if(h!=1 && (M[x-3][y+3][z]==1 || M[x-3][y+3][z]==3) && M[x-3][y][z]==0) {	//head SW
+			b[5] = 1;
+		}
+		if(h!=2 && (M[x-3][y][z]==1 || M[x-3][y][z]==3) && M[x-3][y-3][z]==0) {  //head W
+			b[6] = 1;
+		}
+		if(h!=3 && (M[x-3][y-3][z]==1 || M[x-3][y-3][z]==3) && M[x][y-3][z]==0) {	//head NW
+			b[7] = 1;
+		}
+		
+		n = 0;
+		for(i=0; i<8; i++) {n += b[i];}
+		
+		if(n == 0) {
+			h = mod(h+4,8);
+		} else if(n == 1) {
+			for(i=0; i<8; i++) {
+				if(b[i] == 1) {
+					h = i;
+					break;
 				}
-			} else {
-				for(i=0; i<7; i++) {
-					if(b[mod(h+p[i],8)] == 1) {
-						h = mod(h+p[i],8);
-						break;
-					}
+			}
+		} else {
+			for(i=0; i<7; i++) {
+				if(b[mod(h+p[i],8)] == 1) {
+					h = mod(h+p[i],8);
+					break;
 				}
 			}
 		}
 		
-		count++;
 		//printf("%i,%i\n",n,h);		
-		Sleep(100);
+		//Sleep(1);
 	}
 }
 
