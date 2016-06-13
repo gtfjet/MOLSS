@@ -29,7 +29,7 @@ void makeM() {
 				} else if (R[i][j][k]==255 && G[i][j][k]==255 && B[i][j][k]==0) {
 					M[i][j][k] = 2;  //hole=2
 				} else if (R[i][j][k]==153 && G[i][j][k]==153 && B[i][j][k]==153) {
-					M[i][j][k] = 2;  //hole=2
+					M[i][j][k] = 3;  //walkable hole=3
 				}
 			}
 		}
@@ -74,7 +74,7 @@ void movein(int h) {
 	} else {
 		dx = 0;  dy = 0;
 	}
-	x+=dx; y+=dy;
+	x += dx; y += dy;
 
 	/* Color pixels */
 	for(i=-1; i<=1; i++) {
@@ -85,16 +85,19 @@ void movein(int h) {
 }
 
 void walk() {
-	int i, j, n, h, b[8];
+	int i, j, k, n, h, b[8];
 	int	p[]={0,1,2,3,-1,-2,-3}, q[]={7,6,5,0,8,4,1,2,3};
 	int x0[NHOLES]={0}, y0[NHOLES]={0}, count[NHOLES]={0};
-	int index = 0;
+	int index=0, fillIn=0;
+	FILE *fp = fopen("dump.txt","w");
 	count[index]=8;	
 	
 	/* Initial heading and position */
 	h = 0;	x = 289;  y = 214;	z = 0;
+	//h = 2;	x = 301;  y = 226;	z = 0;
+	//h = 4;	x = 289;  y = 235;	z = 0;
 	
-	while(1) {
+	for(k=0; k<10000; k++) {
 		n = 0;
 		movein(h);
 		
@@ -102,37 +105,41 @@ void walk() {
 		for(i=-3; i<=3; i+=3) {
 			for(j=-3; j<=3; j+=3) {
 				if(M[x+i][y+j][z] >= 2) {    //found a hole!
+					//fprintf(fp,"found hole\n");
 					if((x+i)==x0[index] && (y+j)==y0[index]) {   //same as last hole?
 						count[index]++;
 					}
-					if((((x+i)!=x0[index] && (y+j)!=y0[index]) || count[index]>7) && ((x+i)!=x0[index+1] && (y+j)!=y0[index+1])) {  //new hole or old counted hole and not the hole we just came up/down
-						if((x+i)!=x0[index] && (y+j)!=y0[index]) { //new hole
+					if((x+i)!=x0[index] || (y+j)!=y0[index] || count[index]>7) {  //new hole or old counted hole, take it
+						fillIn=0;
+						if((x+i)!=x0[index] || (y+j)!=y0[index]) { //new hole
 							index++;
 							count[index] = 0;
-							x0[index] = x+i; y0[index] = y+j;  //save position of hole
-						} else { //old counted hole
+							x0[index] = x+i; y0[index] = y+j;      //save position of hole
+						} else { 	                               //old counted hole
+							fillIn=1;
 							index--;
 						}
 						
 						/* Go up or down? */
 						if(z==0) {
 							z++;
-							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}
-						} else if(z==DIMZ) {
+							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}  //mark as walkable hole
+						} else if(z==(DIMZ-1)) {
 							z--;
-						} else if(M[x+i][y+j][z-1] == 2) {
+						} else if(M[x+i][y+j][z-1]>=2) {
 							z--;
 						} else {
 							z++;
-							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}
+							if(M[x+i][y+j][z]==2) {M[x+i][y+j][z]=3;}  //mark as walkable hole
 						}
-	
+						if(fillIn) {M[x+i][y+j][z] = 1;} //fprintf(fp,"filled:%i,%i,%i\n",x+i,y+j,z);}
+						
 						h = q[n];
 						movein(h);
-						//h = 4;
+						i = j = 4;
 						break;
 					}
-					//printf("%i,%i\n",index,count[index]);
+					//fprintf(fp,"%i,%i\n",index,count[index]);
 				}
 				n++;
 			}
@@ -142,25 +149,25 @@ void walk() {
 		/* Wall following */
 		for(i=0; i<8; i++) {b[i] = 0;}	
 		
-		if(h!=4 && (M[x][y-3][z]==1 || M[x][y-3][z]==3) && M[x+3][y-3][z]==0) {	//head N
+		if(h!=4 && (M[x][y-3][z]==1 || M[x][y-3][z]==3) && M[x+3][y-3][z]==0) {		//head N
 			b[0] = 1;
 		}
 		if(h!=5 && (M[x+3][y-3][z]==1 || M[x+3][y-3][z]==3) && M[x+3][y][z]==0) {	//head NE
 			b[1] = 1;
 		}
-		if(h!=6 && (M[x+3][y][z]==1 || M[x+3][y][z]==3) && M[x+3][y+3][z]==0) {	//head E
+		if(h!=6 && (M[x+3][y][z]==1 || M[x+3][y][z]==3) && M[x+3][y+3][z]==0) {		//head E
 			b[2] = 1;
 		}
 		if(h!=7 && (M[x+3][y+3][z]==1 || M[x+3][y+3][z]==3) && M[x][y+3][z]==0) {	//head SE	
 			b[3] = 1;
 		}
-		if(h!=0 && (M[x][y+3][z]==1 || M[x][y+3][z]==3) && M[x-3][y+3][z]==0) {	//head S
+		if(h!=0 && (M[x][y+3][z]==1 || M[x][y+3][z]==3) && M[x-3][y+3][z]==0) {		//head S
 			b[4] = 1;
 		}
 		if(h!=1 && (M[x-3][y+3][z]==1 || M[x-3][y+3][z]==3) && M[x-3][y][z]==0) {	//head SW
 			b[5] = 1;
 		}
-		if(h!=2 && (M[x-3][y][z]==1 || M[x-3][y][z]==3) && M[x-3][y-3][z]==0) {  //head W
+		if(h!=2 && (M[x-3][y][z]==1 || M[x-3][y][z]==3) && M[x-3][y-3][z]==0) {  	//head W
 			b[6] = 1;
 		}
 		if(h!=3 && (M[x-3][y-3][z]==1 || M[x-3][y-3][z]==3) && M[x][y-3][z]==0) {	//head NW
@@ -187,10 +194,11 @@ void walk() {
 				}
 			}
 		}
-		
-		//printf("%i,%i\n",n,h);		
-		//Sleep(1);
+		printf("%i\n",k);
+		fprintf(fp,"%i,%i,%i,%i,%i\n",k,x,y,z,index);
+		if(k<6000) {Sleep(1);} else {Sleep(100);}
 	}
+	fclose(fp);
 }
 
 void main() {
