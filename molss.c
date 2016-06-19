@@ -94,6 +94,21 @@ void moveIn(int * S) {
 	return;
 }
 
+void drawSolution(int n) {
+	int i, j, k;
+	COLORREF C = RGB(0,255,0);
+	
+	/* Color pixels */
+	for(k=0; k<n; k++) {
+		for(i=-1; i<=1; i++) {
+			for(j=-1; j<=1; j++) {
+				SetPixelV(DC,D[0][k]+i+DIMX*D[2][k],D[1][k]+j,C); 
+			}
+		}
+	}
+	return;
+}
+
 int walkToDeath(int * S, int steps) {
 	int x, y, z, z_last, h, h_last; 
 	int i, j, k=0, n, b[8], count=0;
@@ -116,11 +131,11 @@ int walkToDeath(int * S, int steps) {
 			D[i][steps] = S[i];
 		}
 		steps++;
-		printf("%i, %i\n", totalSteps, steps);
+		//printf("%i, %i\n", totalSteps, steps);
 		
 		if(x==TARGET[0] && y==TARGET[1] && z==TARGET[2]) {
 			printf("FOUND!\n");
-			return 1;
+			return steps;
 		}
 		
 		/* Look for birth hole */
@@ -158,7 +173,8 @@ int walkToDeath(int * S, int steps) {
 					h = q[n];  
 					T[0] = x; 	T[1] = y; 	T[2] = z; 	T[3] = h;
 					total++;
-					if(walkToDeath(T, steps)) { return 1; }
+					n = walkToDeath(T, steps);
+					if (n>0) { return n; }
 					total--;
 					
 					M[x+i][y+j][z] = 4;       //mark as decision hole
@@ -227,7 +243,7 @@ int walkToDeath(int * S, int steps) {
 
 void main() {
 	FILE *fp;
-	int i, j, k;
+	int i, j, k, n;
 	int x, y, z, h; //Current position and heading
 	char fname[16];
 	int S[4];
@@ -270,7 +286,10 @@ void main() {
 	
 	/* Set heading and start walking */
 	S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
-	walkToDeath(S, 0);
+	n = walkToDeath(S, 0);
+	
+	/* Print solution */
+	drawSolution(n);
 	
 	/* End gracefully */
 	ReleaseDC(GetConsoleWindow(),DC);
