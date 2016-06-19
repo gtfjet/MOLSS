@@ -8,18 +8,23 @@
 #define DIMX 460
 #define DIMY 540
 #define DIMZ 4
-#define NHOLES 10000
+#define MAXSTEPS 100000
 
 HDC DC;
-int x, y, z, M[DIMX][DIMY][DIMZ] = {0};      
+int TARGET[3] = {0};
+int M[DIMX][DIMY][DIMZ] = {0};      
 unsigned char R[DIMX][DIMY][DIMZ], G[DIMX][DIMY][DIMZ], B[DIMX][DIMY][DIMZ];
+int D[3][MAXSTEPS]; 
+int total = 0;
+int totalSteps = 0;
+
 
 int mod(int a, int b) {
     int r = a % b;
     return r < 0 ? r + b : r;
 }
 
-void makeM() {
+void makeMap() {
 	int i, j, k;
 	for(i=0; i<DIMX; i++) {	
 		for(j=0; j<DIMY; j++) {
@@ -36,7 +41,7 @@ void makeM() {
 	}
 }
 
-void draw() {
+void drawMaze() {
 	int i, j, k;
 	COLORREF C;
 	for(k=0; k<DIMZ; k++) {
@@ -50,9 +55,11 @@ void draw() {
 	
 }
 
-void movein(int h) {
+void moveIn(int * S) {
+	int x, y, z, h; 
 	int i, j, dx, dy;
 	COLORREF C = RGB(255,255,255);
+	x = S[0];	y = S[1];	z = S[2];	h = S[3];
 	
 	/* Update x and y */
 	if(h==0) {			//head N
@@ -82,43 +89,84 @@ void movein(int h) {
 			SetPixelV(DC,x+i+DIMX*z,y+j,C); 
 		}
 	}
+	
+	S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
+	return;
 }
 
-void walk() {
-	int i, j, k=0, n, h, b[8];
+int walkToDeath(int * S, int steps) {
+	int x, y, z, z_last, h, h_last; 
+	int i, j, k=0, n, b[8], count=0;
 	int	p[]={0,1,2,3,-1,-2,-3}, q[]={7,6,5,0,8,4,1,2,3};
+	int T[4], H[5];
 	
-	/* Initial heading and position */
-	h = 0;	x = 289;  y = 214;	z = 0;
-	//h = 2;	x = 301;  y = 226;	z = 0;
-	//h = 4;	x = 289;  y = 235;	z = 0;
-	//h = 6;    x = 274;  y = 229;  z = 0;
-	
+	x = S[0];	y = S[1];	z = S[2];	h = S[3];
 	while(1) {
-		k++;
-		movein(h);
+		/* Check for limit cycle */
+		H[k%5] = h;
+		if(H[0]==1 && H[1]==3 && H[2]==5 && H[3]==7) {
+			return 0; //dead
+		}
+		
+		/* Move in h-direction */
+		k++; totalSteps++;
+		moveIn(S);
+		x = S[0];	y = S[1];	z = S[2];	h = S[3];
+		for(i=0; i<3; i++) {
+			D[i][steps] = S[i];
+		}
+		steps++;
+		printf("%i, %i\n", totalSteps, steps);
+		
+		if(x==TARGET[0] && y==TARGET[1] && z==TARGET[2]) {
+			printf("FOUND!\n");
+			return 1;
+		}
+		
+		/* Look for birth hole */
+		for(i=-3; i<=3; i+=3) {
+			for(j=-3; j<=3; j+=3) {
+				if(M[x+i][y+j][z]==3) {    //found birth hole!	
+					count++;
+					if(count == 10) { 
+						return 0; //dead 
+					}
+				}
+			}
+		}
 		
 		/* Look for a hole */
 		n = 0;
 		for(i=-3; i<=3; i+=3) {
 			for(j=-3; j<=3; j+=3) {
-				if(M[x+i][y+j][z]==2) {    //found a hole!
-					if(rand()>26383) {					
-						/* Go up or down? */
-						if(z==0) {
-							z++; 
-						} else if(z==(DIMZ-1)) {
-							z--;
-						} else if(M[x+i][y+j][z-1]==2) {
-							z--;
-						} else {
-							z++;
-						}			
-						h = q[n];
-						movein(h);
-						i = j = 4;
-						break;
-					}
+				if(M[x+i][y+j][z]==2) {    //found a hole!	
+					z_last = z;
+					h_last = h;
+					/* Go up or down? */
+					if(z==0) {
+						z++; 
+					} else if(z==(DIMZ-1)) {
+						z--;
+					} else if(M[x+i][y+j][z-1]==2) {
+						z--;
+					} else {
+						z++;
+					}			
+					M[x+i][y+j][z] = 3;  	  //mark as birth hole
+					M[x+i][y+j][z_last] = 3;  //mark as birth hole
+					
+					h = q[n];  
+					T[0] = x; 	T[1] = y; 	T[2] = z; 	T[3] = h;
+					total++;
+					if(walkToDeath(T, steps)) { return 1; }
+					total--;
+					
+					M[x+i][y+j][z] = 4;       //mark as decision hole
+					M[x+i][y+j][z_last] = 4;  //mark as decision hole
+					z = z_last;
+					h = h_last;
+					i = j = 4;
+					break;
 				}
 				n++;
 			}
@@ -151,12 +199,10 @@ void walk() {
 		if(h!=3 && M[x-3][y-3][z]>=1 && M[x][y-3][z]==0) {	//head NW
 			b[7] = 1;
 		}
-		
 		n = 0;
 		for(i=0; i<8; i++) {n += b[i];}
-		
 		if(n==0) {
-			h = mod(h+4,8);
+			h = mod(h+4,8);  //turn around
 		} else if(n==1) {
 			for(i=0; i<8; i++) {
 				if(b[i]==1) {
@@ -172,17 +218,20 @@ void walk() {
 				}
 			}
 		}
-		
-		//if(mod(k,10000)==0){draw();}
-		Sleep(1);
+
+		S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
+		//printf("%i\n",total);
+		//Sleep(1);
 	}
 }
 
 void main() {
 	FILE *fp;
 	int i, j, k;
+	int x, y, z, h; //Current position and heading
 	char fname[16];
-	system("mode 300,34");
+	int S[4];
+	system("mode 230,45");
 	DC = GetDC(GetConsoleWindow());
 
 	for(k=0; k<DIMZ; k++) {
@@ -204,8 +253,24 @@ void main() {
 		fclose(fp);
 	}
 	
-	/* Create the map and start navigation*/
-	makeM();	draw();		walk();
+	/* Create the map */
+	makeMap();
+	drawMaze();	
+	
+	/* Set target */
+	TARGET[0] = 394;
+	TARGET[1] = 508;
+	TARGET[2] = 1;
+	
+	/* Initial heading and position */
+	h = 0;	x = 289;  y = 214;	z = 0;
+	// h = 2;	x = 301;  y = 226;	z = 0;
+	// h = 4;	x = 289;  y = 235;	z = 0;
+	// h = 6; 	x = 274;  y = 229;  z = 0; 
+	
+	/* Set heading and start walking */
+	S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
+	walkToDeath(S, 0);
 	
 	/* End gracefully */
 	ReleaseDC(GetConsoleWindow(),DC);
