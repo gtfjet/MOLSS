@@ -10,177 +10,155 @@
 #define DIMZ 4
 #define MAXSTEPS 100000
 
+
+/* Global variables:
+	Direct Context or something
+	RGB data from images
+	Compressed version of maze "maze"
+	X Y Z trajectory for the solution
+*/
 HDC DC;
-int TARGET[3] = {0};
-int M[DIMX][DIMY][DIMZ] = {0};      
-unsigned char R[DIMX][DIMY][DIMZ], G[DIMX][DIMY][DIMZ], B[DIMX][DIMY][DIMZ];
-int D[3][MAXSTEPS]; 
-int total = 0;
-int totalSteps = 0;
+unsigned char RedPixel[DIMX][DIMY][DIMZ], GreenPixel[DIMX][DIMY][DIMZ], BluePixel[DIMX][DIMY][DIMZ];
+int Maze[DIMX][DIMY][DIMZ] = {0};   
+int Solution[3][MAXSTEPS]; 
+int TotalSteps = 0;
+
+/* Function prototypes */
+int  mod(int a, int b);
+void parse();
+void drawMaze();
+void drawSolution(int n, int r, int g, int b);
+int  fixSolution(int n);
+int  walkToDeath(int* x, int steps);
+void timeStep(int* x);
 
 
-int mod(int a, int b) {
-    int r = a % b;
-    return r < 0 ? r + b : r;
-}
 
-void makeMap() {
-	int i, j, k;
-	for(i=0; i<DIMX; i++) {	
-		for(j=0; j<DIMY; j++) {
-			for(k=0; k<DIMZ; k++) {
-				if (R[i][j][k]==153 && G[i][j][k]==102 && B[i][j][k]==51) {
-					M[i][j][k] = 1;  //walkable=1
-				} else if (R[i][j][k]==255 && G[i][j][k]==255 && B[i][j][k]==0) {
-					M[i][j][k] = 2;  //hole=2
-				} else if (R[i][j][k]==153 && G[i][j][k]==153 && B[i][j][k]==153) {
-					M[i][j][k] = 2;  //hole=2
-				}
+void main() {
+	FILE *fp;
+	int numSteps;
+	char fname[16];
+	int x[4];
+	system("mode 230,45");
+	DC = GetDC(GetConsoleWindow());
+	
+	for(int k=0; k<DIMZ; k++) {
+		/* Open ppm */
+		sprintf(fname,"Mols-%i.ppm",k+3);
+		fp = fopen(fname,"rb");
+	
+		/* Read header information */
+		for(int i=0; i<15; i++) {fgetc(fp);}
+
+		/* Read image data and close file */
+		for(int j=0; j<DIMY; j++) {
+			for(int i=0; i<DIMX; i++) {
+				RedPixel[i][j][k]   = fgetc(fp);
+				GreenPixel[i][j][k] = fgetc(fp);
+				BluePixel[i][j][k]  = fgetc(fp);
 			}
 		}
+		fclose(fp);
 	}
+	
+	/* Create the map */
+	parse();	drawMaze();	
+	
+	/* Set target */
+	Maze[373][502][3] = 8;
+	
+	/* Initial heading and position */
+	x[0] = 0;	  //heading
+	x[1] = 289;   //x0
+	x[2] = 214;   //y0
+	x[3] = 0;     //z0
+	// x[0] = 2;	x[1] = 301;  x[2] = 226;  x[3] = 0;
+	// x[0] = 4;	x[1] = 289;  x[2] = 235;  x[3] = 0;
+	// x[0] = 6; 	x[1] = 274;  x[2] = 229;  x[3] = 0; 
+	
+	/* Set heading and start walking */
+	numSteps = walkToDeath(x, 0);
+	
+	/* Print solution */
+	drawSolution(numSteps, 0, 0, 255);
+	Sleep(1000);
+	
+	/* Improve solution */
+	numSteps = fixSolution(numSteps);
+	
+	/* Print solution */
+	drawSolution(numSteps, 0, 255, 0);
+	
+	/* End gracefully */
+	ReleaseDC(GetConsoleWindow(),DC);
+	getch();
 }
 
-void drawMaze() {
-	int i, j, k;
-	COLORREF C;
-	for(k=0; k<DIMZ; k++) {
-		for(j=0; j<DIMY; j++) {
-			for(i=0; i<DIMX; i++) {
-				C = RGB(R[i][j][k], G[i][j][k], B[i][j][k]);
-				SetPixelV(DC,i+DIMX*k,j,C); 
-			}
-		}
-	}
+/* Recursive function */
+int walkToDeath(int* x, int steps) {
+	int z_last, h_last, lives, mySteps, n, b[8], y[4], history[5];
+	int	p[]={0,1,2,3,-1,-2,-3}; 	//priorities when number of options is > 2
+	int q[]={7,6,5,0,8,4,1,2,3};	//x,y -> h transform
 	
-}
-
-void moveIn(int * S) {
-	int x, y, z, h; 
-	int i, j, dx, dy;
-	COLORREF C = RGB(255,255,255);
-	x = S[0];	y = S[1];	z = S[2];	h = S[3];
-	
-	/* Update x and y */
-	if(h==0) {			//head N
-		dx = 0;  dy = -3;
-	} else if(h==1) {	//head NE
-		dx = 3;  dy = -3;
-	} else if(h==2) {	//head E
-		dx = 3;  dy = 0;
-	} else if(h==3) {	//head SE	
-		dx = 3;  dy = 3;
-	} else if(h==4) {	//head S
-		dx = 0;  dy = 3;
-	} else if(h==5) {	//head SW
-		dx = -3; dy = 3;
-	} else if(h==6) {  	//head W
-		dx = -3; dy = 0;
-	} else if(h==7) {	//head NW
-		dx = -3; dy = -3;
-	} else {
-		dx = 0;  dy = 0;
-	}
-	x += dx; y += dy;
-
-	/* Color pixels */
-	for(i=-1; i<=1; i++) {
-		for(j=-1; j<=1; j++) {
-			SetPixelV(DC,x+i+DIMX*z,y+j,C); 
-		}
-	}
-	
-	S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
-	return;
-}
-
-void drawSolution(int n) {
-	int i, j, k;
-	COLORREF C = RGB(0,255,0);
-	
-	/* Color pixels */
-	for(k=0; k<n; k++) {
-		for(i=-1; i<=1; i++) {
-			for(j=-1; j<=1; j++) {
-				SetPixelV(DC,D[0][k]+i+DIMX*D[2][k],D[1][k]+j,C); 
-			}
-		}
-	}
-	return;
-}
-
-int walkToDeath(int * S, int steps) {
-	int x, y, z, z_last, h, h_last; 
-	int i, j, k=0, n, b[8], count=0;
-	int	p[]={0,1,2,3,-1,-2,-3}, q[]={7,6,5,0,8,4,1,2,3};
-	int T[4], H[5];
-	
-	x = S[0];	y = S[1];	z = S[2];	h = S[3];
+	mySteps=0;
+	lives=10;
 	while(1) {
-		/* Check for limit cycle */
-		H[k%5] = h;
-		if(H[0]==1 && H[1]==3 && H[2]==5 && H[3]==7) {
-			return 0; //dead
+		/* Check for a limit cycle */
+		history[mySteps%5] = x[0];
+		if(history[0]==1 && history[1]==3 && history[2]==5 && history[3]==7) {
+			lives--;
+			if(lives==0) { return(0); } //dead 
 		}
 		
-		/* Move in h-direction */
-		k++; totalSteps++;
-		moveIn(S);
-		x = S[0];	y = S[1];	z = S[2];	h = S[3];
-		for(i=0; i<3; i++) {
-			D[i][steps] = S[i];
-		}
-		steps++;
-		//printf("%i, %i\n", totalSteps, steps);
-		
-		if(x==TARGET[0] && y==TARGET[1] && z==TARGET[2]) {
-			printf("FOUND!\n");
-			return steps;
+		/* Take a step and save to Solution */
+		timeStep(x);
+		steps++;  mySteps++;
+		for(int i=0; i<3; i++) { Solution[i][steps] = x[i+1]; }
+
+		/* Check for Cheese */
+		if(Maze[x[1]][x[2]][x[3]]==8) {
+			return(steps);  //output number of steps required to find cheese
 		}
 		
 		/* Look for birth hole */
-		for(i=-3; i<=3; i+=3) {
-			for(j=-3; j<=3; j+=3) {
-				if(M[x+i][y+j][z]==3) {    //found birth hole!	
-					count++;
-					if(count == 10) { 
-						return 0; //dead 
-					}
+		for(int i=-3; i<=3; i+=3) {
+			for(int j=-3; j<=3; j+=3) {
+				if(Maze[x[1]+i][x[2]+j][x[3]]==3) {    //found birth hole!	
+					lives--;
+					if(lives==0) { return(0); } //dead 
 				}
 			}
 		}
 		
 		/* Look for a hole */
 		n = 0;
-		for(i=-3; i<=3; i+=3) {
-			for(j=-3; j<=3; j+=3) {
-				if(M[x+i][y+j][z]==2) {    //found a hole!	
-					z_last = z;
-					h_last = h;
+		for(int i=-3; i<=3; i+=3) {
+			for(int j=-3; j<=3; j+=3) {
+				if(Maze[x[1]+i][x[2]+j][x[3]]==2) {    //found a hole!	
+					z_last = x[3];
+					h_last = x[0];
 					/* Go up or down? */
-					if(z==0) {
-						z++; 
-					} else if(z==(DIMZ-1)) {
-						z--;
-					} else if(M[x+i][y+j][z-1]==2) {
-						z--;
+					if(x[3]==0) {
+						x[3]++; 
+					} else if(x[3]==(DIMZ-1)) {
+						x[3]--;
+					} else if(Maze[x[1]+i][x[2]+j][x[3]-1]==2) {
+						x[3]--;
 					} else {
-						z++;
+						x[3]++;
 					}			
-					M[x+i][y+j][z] = 3;  	  //mark as birth hole
-					M[x+i][y+j][z_last] = 3;  //mark as birth hole
+					Maze[x[1]+i][x[2]+j][x[3]] = 3;  	//mark as birth hole
+					Maze[x[1]+i][x[2]+j][z_last] = 3;  	//mark as birth hole
 					
-					h = q[n];  
-					T[0] = x; 	T[1] = y; 	T[2] = z; 	T[3] = h;
-					total++;
-					n = walkToDeath(T, steps);
-					if (n>0) { return n; }
-					total--;
+					x[0] = q[n];  
+					for(int i=0; i<4; i++) { y[i] = x[i]; } //copy x;
+					n = walkToDeath(y, steps);
+					if (n>0) { return(n); }				//someone found cheese!
 					
-					M[x+i][y+j][z] = 4;       //mark as decision hole
-					M[x+i][y+j][z_last] = 4;  //mark as decision hole
-					z = z_last;
-					h = h_last;
+					Maze[x[1]+i][x[2]+j][x[3]] = 4;  	//mark as decision hole
+					Maze[x[1]+i][x[2]+j][z_last] = 4;  	//mark as decision hole
+					x[3] = z_last;
+					x[0] = h_last;
 					i = j = 4;
 					break;
 				}
@@ -189,110 +167,137 @@ int walkToDeath(int * S, int steps) {
 		}
 		
 		/* Wall following */
-		for(i=0; i<8; i++) {b[i] = 0;}	
+		for(int i=0; i<8; i++) {b[i] = 0;}	
 		
-		if(h!=4 && M[x][y-3][z]>=1 && M[x+3][y-3][z]==0) {	//head N
+		if(x[0]!=4 && Maze[x[1]][x[2]-3][x[3]]>=1 && Maze[x[1]+3][x[2]-3][x[3]]==0) {	//head N
 			b[0] = 1;
 		}
-		if(h!=5 && M[x+3][y-3][z]>=1 && M[x+3][y][z]==0) {	//head NE
+		if(x[0]!=5 && Maze[x[1]+3][x[2]-3][x[3]]>=1 && Maze[x[1]+3][x[2]][x[3]]==0) {	//head NE
 			b[1] = 1;
 		}
-		if(h!=6 && M[x+3][y][z]>=1 && M[x+3][y+3][z]==0) {	//head E
+		if(x[0]!=6 && Maze[x[1]+3][x[2]][x[3]]>=1 && Maze[x[1]+3][x[2]+3][x[3]]==0) {	//head E
 			b[2] = 1;
 		}
-		if(h!=7 && M[x+3][y+3][z]>=1 && M[x][y+3][z]==0) {	//head SE
+		if(x[0]!=7 && Maze[x[1]+3][x[2]+3][x[3]]>=1 && Maze[x[1]][x[2]+3][x[3]]==0) {	//head SE
 			b[3] = 1;
 		}
-		if(h!=0 && M[x][y+3][z]>=1 && M[x-3][y+3][z]==0) {	//head S
+		if(x[0]!=0 && Maze[x[1]][x[2]+3][x[3]]>=1 && Maze[x[1]-3][x[2]+3][x[3]]==0) {	//head S
 			b[4] = 1;
 		}
-		if(h!=1 && M[x-3][y+3][z]>=1 && M[x-3][y][z]==0) {	//head SW
+		if(x[0]!=1 && Maze[x[1]-3][x[2]+3][x[3]]>=1 && Maze[x[1]-3][x[2]][x[3]]==0) {	//head SW
 			b[5] = 1;
 		}
-		if(h!=2 && M[x-3][y][z]>=1 && M[x-3][y-3][z]==0) {  //head W
+		if(x[0]!=2 && Maze[x[1]-3][x[2]][x[3]]>=1 && Maze[x[1]-3][x[2]-3][x[3]]==0) {  //head W
 			b[6] = 1;
 		}
-		if(h!=3 && M[x-3][y-3][z]>=1 && M[x][y-3][z]==0) {	//head NW
+		if(x[0]!=3 && Maze[x[1]-3][x[2]-3][x[3]]>=1 && Maze[x[1]][x[2]-3][x[3]]==0) {	//head NW
 			b[7] = 1;
 		}
 		n = 0;
-		for(i=0; i<8; i++) {n += b[i];}
+		for(int i=0; i<8; i++) {n += b[i];}
 		if(n==0) {
-			h = mod(h+4,8);  //turn around
+			x[0] = mod(x[0]+4,8);  //turn around
 		} else if(n==1) {
-			for(i=0; i<8; i++) {
+			for(int i=0; i<8; i++) {
 				if(b[i]==1) {
-					h = i;
+					x[0] = i;
 					break;
 				}
 			}
 		} else {
-			for(i=0; i<7; i++) {
-				if(b[mod(h+p[i],8)]==1) {
-					h = mod(h+p[i],8);
+			for(int i=0; i<7; i++) {
+				if(b[mod(x[0]+p[i],8)]==1) {
+					x[0] = mod(x[0]+p[i],8);
 					break;
 				}
 			}
 		}
-
-		S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
-		//printf("%i\n",total);
 		//Sleep(1);
 	}
 }
 
-void main() {
-	FILE *fp;
-	int i, j, k, n;
-	int x, y, z, h; //Current position and heading
-	char fname[16];
-	int S[4];
-	system("mode 230,45");
-	DC = GetDC(GetConsoleWindow());
+int fixSolution(int n) {
+	return(n);
+}
 
-	for(k=0; k<DIMZ; k++) {
-		/* Open ppm */
-		sprintf(fname,"Mols-%i.ppm",k+3);
-		fp = fopen(fname,"rb");
+int mod(int a, int b) {
+    int r = a % b;
+    return r < 0 ? r + b : r;
+}
+
+void parse() {
+	for(int i=0; i<DIMX; i++) {	
+		for(int j=0; j<DIMY; j++) {
+			for(int k=0; k<DIMZ; k++) { //wall=0
+				if (RedPixel[i][j][k]==153 && GreenPixel[i][j][k]==102 && BluePixel[i][j][k]==51) {
+					Maze[i][j][k] = 1;  //walkable=1
+				} else if (RedPixel[i][j][k]==255 && GreenPixel[i][j][k]==255 && BluePixel[i][j][k]==0) {
+					Maze[i][j][k] = 2;  //hole=2
+				} else if (RedPixel[i][j][k]==153 && GreenPixel[i][j][k]==153 && BluePixel[i][j][k]==153) {
+					Maze[i][j][k] = 2;  //hole=2
+				}						//birth hole=3
+			}							//decision hole=4
+		}								//target=8
+	}
+}
+
+void timeStep(int* x) {
+	int dx, dy;
+	COLORREF C = RGB(255,255,255);
 	
-		/* Read header information */
-		for(i=0; i<15; i++) {fgetc(fp);}
+	/* Update x and y */
+	if(x[0]==0) {			//head N
+		dx = 0;  dy = -3;
+	} else if(x[0]==1) {	//head NE
+		dx = 3;  dy = -3;
+	} else if(x[0]==2) {	//head E
+		dx = 3;  dy = 0;
+	} else if(x[0]==3) {	//head SE	
+		dx = 3;  dy = 3;
+	} else if(x[0]==4) {	//head S
+		dx = 0;  dy = 3;
+	} else if(x[0]==5) {	//head SW
+		dx = -3; dy = 3;
+	} else if(x[0]==6) {  	//head W
+		dx = -3; dy = 0;
+	} else if(x[0]==7) {	//head NW
+		dx = -3; dy = -3;
+	} else {
+		dx = 0;  dy = 0;
+	}
+	x[1] += dx; x[2] += dy;
 
-		/* Read image data and close file */
-		for(j=0; j<DIMY; j++) {
-			for(i=0; i<DIMX; i++) {
-				R[i][j][k] = fgetc(fp);
-				G[i][j][k] = fgetc(fp);
-				B[i][j][k] = fgetc(fp);
+	/* Color pixels */
+	for(int i=-1; i<=1; i++) {
+		for(int j=-1; j<=1; j++) {
+			SetPixelV(DC,x[1]+i+DIMX*x[3],x[2]+j,C); 
+		}
+	}
+	TotalSteps++;
+}
+
+void drawMaze() {
+	COLORREF C;
+	for(int k=0; k<DIMZ; k++) {
+		for(int j=0; j<DIMY; j++) {
+			for(int i=0; i<DIMX; i++) {
+				C = RGB(RedPixel[i][j][k], GreenPixel[i][j][k], BluePixel[i][j][k]);
+				SetPixelV(DC,i+DIMX*k,j,C); 
 			}
 		}
-		fclose(fp);
 	}
 	
-	/* Create the map */
-	makeMap();
-	drawMaze();	
-	
-	/* Set target */
-	TARGET[0] = 394;
-	TARGET[1] = 508;
-	TARGET[2] = 1;
-	
-	/* Initial heading and position */
-	h = 0;	x = 289;  y = 214;	z = 0;
-	// h = 2;	x = 301;  y = 226;	z = 0;
-	// h = 4;	x = 289;  y = 235;	z = 0;
-	// h = 6; 	x = 274;  y = 229;  z = 0; 
-	
-	/* Set heading and start walking */
-	S[0] = x; 	S[1] = y; 	S[2] = z; 	S[3] = h;
-	n = walkToDeath(S, 0);
-	
-	/* Print solution */
-	drawSolution(n);
-	
-	/* End gracefully */
-	ReleaseDC(GetConsoleWindow(),DC);
-	getch();
 }
+
+void drawSolution(int n, int r, int g, int b) {
+	COLORREF C = RGB(r,g,b);
+	for(int k=0; k<n; k++) {
+		for(int i=-1; i<=1; i++) {
+			for(int j=-1; j<=1; j++) {
+				SetPixelV(DC,Solution[0][k]+i+DIMX*Solution[2][k],Solution[1][k]+j,C); 
+			}
+		}
+	}
+}
+
 
