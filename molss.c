@@ -8,11 +8,11 @@
 #define DIMX 460
 #define DIMY 540
 #define DIMZ 4
-#define MAXSTEPS 100000
+#define MAXSTEPS 50000
 
 
 /* Global variables:
-	Direct Context or something
+	Direct Context?
 	RGB data from images
 	Compressed version of maze "maze"
 	X Y Z trajectory for the solution
@@ -31,7 +31,6 @@ void drawSolution(int n, int r, int g, int b);
 int  fixSolution(int n);
 int  walkToDeath(int* x, int steps);
 void timeStep(int* x);
-
 
 
 void main() {
@@ -72,7 +71,7 @@ void main() {
 	x[1] = 289;   //x0
 	x[2] = 214;   //y0
 	x[3] = 0;     //z0
-	// x[0] = 2;	x[1] = 301;  x[2] = 226;  x[3] = 0;
+	x[0] = 2;	x[1] = 301;  x[2] = 226;  x[3] = 0;
 	// x[0] = 4;	x[1] = 289;  x[2] = 235;  x[3] = 0;
 	// x[0] = 6; 	x[1] = 274;  x[2] = 229;  x[3] = 0; 
 	
@@ -80,8 +79,7 @@ void main() {
 	numSteps = walkToDeath(x, 0);
 	
 	/* Print solution */
-	drawSolution(numSteps, 0, 0, 255);
-	Sleep(1000);
+	//drawSolution(numSteps, 0, 0, 255);
 	
 	/* Improve solution */
 	numSteps = fixSolution(numSteps);
@@ -217,6 +215,47 @@ int walkToDeath(int* x, int steps) {
 }
 
 int fixSolution(int n) {
+	int f, p, q;
+	int x[MAXSTEPS], y[MAXSTEPS], z[MAXSTEPS];
+
+	for(int i=0; i<n; i++) {
+		x[i] = Solution[0][i];
+		y[i] = Solution[1][i];
+		z[i] = Solution[2][i];
+	}
+	
+	p=0;
+	q=0;
+	while(1) {
+		for(int l=n-1; l>(p+3); l--){ //last position
+			for(int i=-3; i<=3; i+=3) { 	//search in walkable x
+				for(int j=-3; j<=3; j+=3) { //search in walkable y
+					if((x[p]+i)==x[l] && (y[p]+j)==y[l] && z[p]==z[l]) {    //found a move!
+						/* Shift data */
+						f = 0;
+						for(int k=l; k<n; k++) {
+							f++;
+							x[p+f] = x[k];
+							y[p+f] = y[k];
+							z[p+f] = z[k];
+						}
+						n = p+f+1;
+						i = j = 4;
+						l = -1;
+						break; //triple break
+					}
+				}
+			} 
+		}
+		p++;
+		if(p>=n-3) {break; }
+	}
+	
+	for(int i=0; i<n; i++) {
+		Solution[0][i] = x[i];
+		Solution[1][i] = y[i];
+		Solution[2][i] = z[i];
+	}
 	return(n);
 }
 
@@ -270,7 +309,7 @@ void timeStep(int* x) {
 	/* Color pixels */
 	for(int i=-1; i<=1; i++) {
 		for(int j=-1; j<=1; j++) {
-			SetPixelV(DC,x[1]+i+DIMX*x[3],x[2]+j,C); 
+			//SetPixelV(DC,x[1]+i+DIMX*x[3],x[2]+j,C); 
 		}
 	}
 	TotalSteps++;
