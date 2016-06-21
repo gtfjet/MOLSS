@@ -8,7 +8,7 @@
 #define DIMX 460
 #define DIMY 540
 #define DIMZ 4
-#define MAXSTEPS 50000
+#define MAXSTEPS 100000
 
 
 /* Global variables:
@@ -16,22 +16,23 @@
 	RGB data from images
 	Compressed version of maze "maze"
 	X Y Z trajectory for the solution
+	Total number of steps taken by algorithm
 */
 HDC DC;
 unsigned char RedPixel[DIMX][DIMY][DIMZ], GreenPixel[DIMX][DIMY][DIMZ], BluePixel[DIMX][DIMY][DIMZ];
 int Maze[DIMX][DIMY][DIMZ] = {0};   
-int Solution[3][MAXSTEPS]; 
+int X[MAXSTEPS], Y[MAXSTEPS], Z[MAXSTEPS];  //SOLUTION VECTORS 
 int TotalSteps = 0;
 
 /* Function prototypes */
 int  mod(int a, int b);
-void parse();
-void drawMaze();
-void drawSolution(int n, int r, int g, int b);
-int  fixSolution(int n);
 int  walkToDeath(int* x, int steps);
+int  fixSolution(int n);
 void timeStep(int* x);
-
+void drawSolution(int n, int r, int g, int b);
+void startNavigation(int n);
+void drawMaze();
+void parse();
 
 void main() {
 	FILE *fp;
@@ -60,11 +61,12 @@ void main() {
 		fclose(fp);
 	}
 	
-	/* Create the map */
-	parse();	drawMaze();	
+	/* Parse RGB data and draw the maze */
+	parse();	
+	drawMaze();	
 	
 	/* Set target */
-	Maze[373][502][3] = 8;
+	Maze[373][502][3] = 8; // Entrance to Demona
 	
 	/* Initial heading and position */
 	x[0] = 0;	  //heading
@@ -79,13 +81,17 @@ void main() {
 	numSteps = walkToDeath(x, 0);
 	
 	/* Print solution */
-	//drawSolution(numSteps, 0, 0, 255);
+	drawSolution(numSteps, 0, 0, 255);
 	
 	/* Improve solution */
 	numSteps = fixSolution(numSteps);
 	
-	/* Print solution */
+	/* Print improved solution */
 	drawSolution(numSteps, 0, 255, 0);
+
+	/* Start navigating user */
+	getch();
+	startNavigation(numSteps);
 	
 	/* End gracefully */
 	ReleaseDC(GetConsoleWindow(),DC);
@@ -108,12 +114,20 @@ int walkToDeath(int* x, int steps) {
 			if(lives==0) { return(0); } //dead 
 		}
 		
-		/* Take a step and save to Solution */
+		/* Take a step and save to solution */
 		timeStep(x);
-		steps++;  mySteps++;
-		for(int i=0; i<3; i++) { Solution[i][steps] = x[i+1]; }
-
-		/* Check for Cheese */
+		if(steps<MAXSTEPS) {
+			X[steps] = x[1];
+			Y[steps] = x[2];
+			Z[steps] = x[3];
+		} else {
+			printf("Out of space!\n");
+			system("pause");
+		}
+		steps++; 
+		mySteps++;
+		
+		/* Check for cheese */
 		if(Maze[x[1]][x[2]][x[3]]==8) {
 			return(steps);  //output number of steps required to find cheese
 		}
@@ -215,47 +229,33 @@ int walkToDeath(int* x, int steps) {
 }
 
 int fixSolution(int n) {
-	int f, p, q;
-	int x[MAXSTEPS], y[MAXSTEPS], z[MAXSTEPS];
+	int f, p=0, q=0;
 
-	for(int i=0; i<n; i++) {
-		x[i] = Solution[0][i];
-		y[i] = Solution[1][i];
-		z[i] = Solution[2][i];
-	}
-	
-	p=0;
-	q=0;
 	while(1) {
-		for(int l=n-1; l>(p+3); l--){ //last position
+		for(int l=n-1; l>(p+3); l--){ 		//last position
 			for(int i=-3; i<=3; i+=3) { 	//search in walkable x
 				for(int j=-3; j<=3; j+=3) { //search in walkable y
-					if((x[p]+i)==x[l] && (y[p]+j)==y[l] && z[p]==z[l]) {    //found a move!
+					if((X[p]+i)==X[l] && (Y[p]+j)==Y[l] && Z[p]==Z[l]) {    //found a move!
 						/* Shift data */
 						f = 0;
 						for(int k=l; k<n; k++) {
 							f++;
-							x[p+f] = x[k];
-							y[p+f] = y[k];
-							z[p+f] = z[k];
+							X[p+f] = X[k];
+							Y[p+f] = Y[k];
+							Z[p+f] = Z[k];
 						}
 						n = p+f+1;
 						i = j = 4;
 						l = -1;
-						break; //triple break
+						break; //break all for loops
 					}
 				}
 			} 
 		}
 		p++;
-		if(p>=n-3) {break; }
+		if(p>=(n-3)) {break; }
 	}
 	
-	for(int i=0; i<n; i++) {
-		Solution[0][i] = x[i];
-		Solution[1][i] = y[i];
-		Solution[2][i] = z[i];
-	}
 	return(n);
 }
 
@@ -309,7 +309,7 @@ void timeStep(int* x) {
 	/* Color pixels */
 	for(int i=-1; i<=1; i++) {
 		for(int j=-1; j<=1; j++) {
-			//SetPixelV(DC,x[1]+i+DIMX*x[3],x[2]+j,C); 
+			SetPixelV(DC,x[1]+i+DIMX*x[3],x[2]+j,C); 
 		}
 	}
 	TotalSteps++;
@@ -333,10 +333,47 @@ void drawSolution(int n, int r, int g, int b) {
 	for(int k=0; k<n; k++) {
 		for(int i=-1; i<=1; i++) {
 			for(int j=-1; j<=1; j++) {
-				SetPixelV(DC,Solution[0][k]+i+DIMX*Solution[2][k],Solution[1][k]+j,C); 
+				SetPixelV(DC,X[k]+i+DIMX*Z[k],Y[k]+j,C); 
 			}
 		}
 	}
 }
 
+void startNavigation(int n) {
+	int r = 50;
+	COLORREF C = RGB(0,0,0);
+	
+	/* Clear maze */
+	for(int k=0; k<DIMZ; k++) {
+		for(int j=0; j<DIMY; j++) {
+			for(int i=0; i<DIMX; i++) {
+				SetPixelV(DC,i+DIMX*k,j,C); 
+			}
+		}
+	}
+	
+	/* Print player */
+	for(int i=-1; i<=1; i++) {
+		for(int j=-1; j<=1; j++) {
+			SetPixelV(DC,r+i+20,r+j+20,RGB(255,255,255)); 
+		}
+	}
+	
+	/* Print minimap */
+	for(int k=0; k<n; k++) {
+		for(int i=-r; i<=r; i++) {
+			for(int j=-r; j<=r; j++) {
+				/* Print minimap */ 
+				if(i<-1 || i>1 || j<-1 || j>1) {
+					if((X[k]+i)<DIMX && (Y[k]+j)<DIMY && (X[k]+i)>=0  && (Y[k]+j)>=0) {
+						C = RGB(RedPixel[X[k]+i][Y[k]+j][Z[k]], GreenPixel[X[k]+i][Y[k]+j][Z[k]], BluePixel[X[k]+i][Y[k]+j][Z[k]]);
+						SetPixelV(DC,r+i+20,r+j+20,C); 
+					}
+				}
+			}
+		}
+		Sleep(10);
+	}
+	
+}
 
