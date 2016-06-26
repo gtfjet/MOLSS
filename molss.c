@@ -12,7 +12,7 @@
 
 
 /* Global variables:
-	Direct Context?
+	Device Context
 	RGB data from images
 	Compressed version of maze "maze"
 	X Y Z trajectory for the solution
@@ -39,8 +39,8 @@ void main() {
 	int numSteps;
 	char fname[16];
 	int x[4];
-	system("mode 230,45");
 	DC = GetDC(GetConsoleWindow());
+	system("mode 230,45");
 	
 	for(int k=0; k<DIMZ; k++) {
 		/* Open ppm */
@@ -64,7 +64,7 @@ void main() {
 	/* Parse RGB data and draw the maze */
 	parse();	
 	drawMaze();	
-	
+
 	/* Set target */
 	Maze[373][502][3] = 8; // Entrance to Demona
 	
@@ -317,15 +317,26 @@ void timeStep(int* x) {
 
 void drawMaze() {
 	COLORREF C;
+	RECT rect;
+	HDC hDCMem;
+	HBITMAP bm;
+	hDCMem = CreateCompatibleDC(DC);
+	GetClientRect(GetConsoleWindow(), &rect); 
+	bm = CreateCompatibleBitmap(DC, rect.right, rect.bottom);
+	SelectObject(hDCMem, bm);
+	
 	for(int k=0; k<DIMZ; k++) {
 		for(int j=0; j<DIMY; j++) {
 			for(int i=0; i<DIMX; i++) {
 				C = RGB(RedPixel[i][j][k], GreenPixel[i][j][k], BluePixel[i][j][k]);
-				SetPixelV(DC,i+DIMX*k,j,C); 
+				SetPixelV(hDCMem,i+DIMX*k,j,C); 
 			}
 		}
-	}
-	
+	}	
+
+	BitBlt(DC, 0, 0, rect.right, rect.bottom, hDCMem, 0, 0, SRCCOPY);
+	DeleteObject(bm);
+	DeleteDC(hDCMem);
 }
 
 void drawSolution(int n, int r, int g, int b) {
@@ -342,38 +353,39 @@ void drawSolution(int n, int r, int g, int b) {
 void startNavigation(int n) {
 	int r = 50;
 	COLORREF C = RGB(0,0,0);
+	RECT rect;
+	HDC hDCMem;
+	HBITMAP bm;
+	hDCMem = CreateCompatibleDC(DC);
+	GetClientRect(GetConsoleWindow(), &rect); 
+	bm = CreateCompatibleBitmap(DC, rect.right, rect.bottom);
+	SelectObject(hDCMem, bm);
 	
 	/* Clear maze */
-	for(int k=0; k<DIMZ; k++) {
-		for(int j=0; j<DIMY; j++) {
-			for(int i=0; i<DIMX; i++) {
-				SetPixelV(DC,i+DIMX*k,j,C); 
-			}
-		}
-	}
+	BitBlt(DC, 0, 0, rect.right, rect.bottom, hDCMem, 0, 0, SRCCOPY);
 	
-	/* Print player */
-	for(int i=-1; i<=1; i++) {
-		for(int j=-1; j<=1; j++) {
-			SetPixelV(DC,r+i+20,r+j+20,RGB(255,255,255)); 
-		}
-	}
+	/* Resize bitmap */
+	bm = CreateCompatibleBitmap(DC, 2*r, 2*r);
+	SelectObject(hDCMem, bm);	
 	
 	/* Print minimap */
 	for(int k=0; k<n; k++) {
 		for(int i=-r; i<=r; i++) {
 			for(int j=-r; j<=r; j++) {
-				/* Print minimap */ 
-				if(i<-1 || i>1 || j<-1 || j>1) {
-					if((X[k]+i)<DIMX && (Y[k]+j)<DIMY && (X[k]+i)>=0  && (Y[k]+j)>=0) {
+				if((X[k]+i)<DIMX && (Y[k]+j)<DIMY && (X[k]+i)>=0  && (Y[k]+j)>=0) {
+					if(i<-1 || i>1 || j<-1 || j>1) {
 						C = RGB(RedPixel[X[k]+i][Y[k]+j][Z[k]], GreenPixel[X[k]+i][Y[k]+j][Z[k]], BluePixel[X[k]+i][Y[k]+j][Z[k]]);
-						SetPixelV(DC,r+i+20,r+j+20,C); 
+						SetPixelV(hDCMem,r+i,r+j,C); 
+					} else {
+						SetPixelV(hDCMem,r+i,r+j,RGB(255,255,255)); 
 					}
 				}
 			}
 		}
 		Sleep(10);
+		StretchBlt(DC, 0, 0, 12*r, 12*r, hDCMem, 0, 0, 2*r, 2*r, SRCCOPY);
 	}
-	
+	DeleteObject(bm);
+	DeleteDC(hDCMem);
 }
 
