@@ -18,7 +18,7 @@
 	X Y Z trajectory for the solution
 	Total number of steps taken by algorithm
 */
-HDC DC;
+HDC DC, hDCMem;
 unsigned char RedPixel[DIMX][DIMY][DIMZ], GreenPixel[DIMX][DIMY][DIMZ], BluePixel[DIMX][DIMY][DIMZ];
 int Maze[DIMX][DIMY][DIMZ] = {0};   
 int X[MAXSTEPS], Y[MAXSTEPS], Z[MAXSTEPS];  //SOLUTION VECTORS 
@@ -36,11 +36,13 @@ void parse();
 
 void main() {
 	FILE *fp;
+	POINT pt;
 	int numSteps;
 	char fname[16];
 	int x[4];
 	DC = GetDC(GetConsoleWindow());
-	system("mode 230,45");
+	hDCMem = CreateCompatibleDC(DC);
+	SetWindowPos(GetConsoleWindow(),HWND_TOP,0,0,1900,600,0);
 	
 	for(int k=0; k<DIMZ; k++) {
 		/* Open ppm */
@@ -64,16 +66,26 @@ void main() {
 	/* Parse RGB data and draw the maze */
 	parse();	
 	drawMaze();	
-
+	
+	/* Wait for click */
+	Sleep(100);
+	while(1) {
+		if(GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
+			GetCursorPos(&pt);
+			X[0] = mod(pt.x-10,DIMX);
+			Y[0] = pt.y-33;
+			Z[0] = (pt.x-10)/DIMX;
+			break;
+		}
+	}
+	drawSolution(1, 0, 0, 255);
+	
 	/* Set target */
-	Maze[373][502][3] = 8; // Entrance to Demona
+	Maze[X[0]][Y[0]][Z[0]] = 8; // Entrance to Demona
 	
 	/* Initial heading and position */
-	x[0] = 0;	  //heading
-	x[1] = 289;   //x0
-	x[2] = 214;   //y0
-	x[3] = 0;     //z0
-	x[0] = 2;	x[1] = 301;  x[2] = 226;  x[3] = 0;
+	x[0] = 0;	x[1] = 289;	x[2] = 214;	x[3] = 0;
+	x[0] = 2;	x[1] = 301;	x[2] = 226;	x[3] = 0;
 	// x[0] = 4;	x[1] = 289;  x[2] = 235;  x[3] = 0;
 	// x[0] = 6; 	x[1] = 274;  x[2] = 229;  x[3] = 0; 
 	
@@ -81,21 +93,24 @@ void main() {
 	numSteps = walkToDeath(x, 0);
 	
 	/* Print solution */
+	Sleep(1000);
 	drawSolution(numSteps, 0, 0, 255);
 	
 	/* Improve solution */
 	numSteps = fixSolution(numSteps);
 	
 	/* Print improved solution */
+	Sleep(1000);
 	drawSolution(numSteps, 0, 255, 0);
 
 	/* Start navigating user */
-	getch();
+	Sleep(1000);
 	startNavigation(numSteps);
 	
 	/* End gracefully */
+	DeleteDC(hDCMem);
 	ReleaseDC(GetConsoleWindow(),DC);
-	getch();
+	Sleep(1000);
 }
 
 /* Recursive function */
@@ -128,8 +143,12 @@ int walkToDeath(int* x, int steps) {
 		mySteps++;
 		
 		/* Check for cheese */
-		if(Maze[x[1]][x[2]][x[3]]==8) {
-			return(steps);  //output number of steps required to find cheese
+		for(int i=-3; i<=3; i++) {
+			for(int j=-3; j<=3; j++) {
+				if(Maze[x[1]+i][x[2]+j][x[3]]==8) {
+					return(steps);  //output number of steps required to find cheese
+				}
+			}
 		}
 		
 		/* Look for birth hole */
@@ -318,9 +337,7 @@ void timeStep(int* x) {
 void drawMaze() {
 	COLORREF C;
 	RECT rect;
-	HDC hDCMem;
 	HBITMAP bm;
-	hDCMem = CreateCompatibleDC(DC);
 	GetClientRect(GetConsoleWindow(), &rect); 
 	bm = CreateCompatibleBitmap(DC, rect.right, rect.bottom);
 	SelectObject(hDCMem, bm);
@@ -336,27 +353,42 @@ void drawMaze() {
 
 	BitBlt(DC, 0, 0, rect.right, rect.bottom, hDCMem, 0, 0, SRCCOPY);
 	DeleteObject(bm);
-	DeleteDC(hDCMem);
 }
 
 void drawSolution(int n, int r, int g, int b) {
-	COLORREF C = RGB(r,g,b);
-	for(int k=0; k<n; k++) {
-		for(int i=-1; i<=1; i++) {
-			for(int j=-1; j<=1; j++) {
-				SetPixelV(DC,X[k]+i+DIMX*Z[k],Y[k]+j,C); 
+	COLORREF C;
+	RECT rect;
+	HBITMAP bm;
+	GetClientRect(GetConsoleWindow(), &rect); 
+	bm = CreateCompatibleBitmap(DC, rect.right, rect.bottom);
+	SelectObject(hDCMem, bm);
+	
+	for(int k=0; k<DIMZ; k++) {
+		for(int j=0; j<DIMY; j++) {
+			for(int i=0; i<DIMX; i++) {
+				C = RGB(RedPixel[i][j][k], GreenPixel[i][j][k], BluePixel[i][j][k]);
+				SetPixelV(hDCMem,i+DIMX*k,j,C); 
 			}
 		}
 	}
+	
+	for(int k=0; k<n; k++) {
+		for(int i=-1; i<=1; i++) {
+			for(int j=-1; j<=1; j++) {
+				SetPixelV(hDCMem,X[k]+i+DIMX*Z[k],Y[k]+j,RGB(r,g,b)); 
+			}
+		}
+	}
+	
+	BitBlt(DC, 0, 0, rect.right, rect.bottom, hDCMem, 0, 0, SRCCOPY);
+	DeleteObject(bm);
 }
 
 void startNavigation(int n) {
 	int r = 50;
 	COLORREF C = RGB(0,0,0);
 	RECT rect;
-	HDC hDCMem;
 	HBITMAP bm;
-	hDCMem = CreateCompatibleDC(DC);
 	GetClientRect(GetConsoleWindow(), &rect); 
 	bm = CreateCompatibleBitmap(DC, rect.right, rect.bottom);
 	SelectObject(hDCMem, bm);
@@ -382,10 +414,9 @@ void startNavigation(int n) {
 				}
 			}
 		}
-		Sleep(10);
+		//Sleep(10);
 		StretchBlt(DC, 0, 0, 12*r, 12*r, hDCMem, 0, 0, 2*r, 2*r, SRCCOPY);
 	}
 	DeleteObject(bm);
-	DeleteDC(hDCMem);
 }
 
